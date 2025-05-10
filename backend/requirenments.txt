@@ -5,3 +5,8 @@ scikit-learn
 matplotlib
 seaborn
 tensorflow
+notebook
+statsmodels
+xgboost
+fbpropet
+warnings
