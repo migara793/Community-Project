@@ -7,6 +7,7 @@ D:/community[[:space:]]project/Community-Project/model/plots filter=lfs diff=lfs
 D:/community[[:space:]]project/Community-Project/model/models1 filter=lfs diff=lfs merge=lfs -text
 D:/community[[:space:]]project/Community-Project/model/datasets filter=lfs diff=lfs merge=lfs -text
 D:/community[[:space:]]project/Community-Project/model/.ipynb_checkpoints filter=lfs diff=lfs merge=lfs -text
+model filter=lfs diff=lfs merge=lfs -text
 model/datasets/final_data.csv filter=lfs diff=lfs merge=lfs -text
 model/models1/feature_elim_regressor.pkl filter=lfs diff=lfs merge=lfs -text
 model/models1/randomforest_regressor.pkl filter=lfs diff=lfs merge=lfs -text
