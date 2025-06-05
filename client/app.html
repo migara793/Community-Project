@@ -1,1 +1,148 @@
- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Series Forecasting Dashboard</title>
+    <link rel="stylesheet" href="app.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header Section -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-chart-line"></i>
+                <h1>Time Series Forecasting</h1>
+            </div>
+            <div class="info">
+                <span id="current-date"></span>
+            </div>
+        </header>
+        
+        <!-- Main Content -->
+        <main class="content">
+            <!-- Input Panel -->
+            <section class="input-panel">
+                <h2><i class="fas fa-sliders-h"></i> Forecast Parameters</h2>
+                
+                <div class="form-group">
+                    <label for="featureSelect"><i class="fas fa-cube"></i> Select Feature:</label>
+                    <div class="select-wrapper">
+                        <select id="featureSelect" class="form-control">
+                            <option value="" disabled selected>Loading available features...</option>
+                        </select>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="date-range">
+                    <div class="form-group">
+                        <label for="startDate"><i class="fas fa-calendar-start"></i> Start Date:</label>
+                        <input type="date" id="startDate" class="form-control">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="endDate"><i class="fas fa-calendar-end"></i> End Date:</label>
+                        <input type="date" id="endDate" class="form-control">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button id="predictButton" class="btn predict-btn">
+                        <i class="fas fa-bolt"></i> Generate Forecast
+                    </button>
+                </div>
+                
+                <div class="info-card">
+                    <i class="fas fa-info-circle"></i>
+                    <p>Select a feature and date range to generate forecasts. Predictions start after the last training date.</p>
+                </div>
+            </section>
+            
+            <!-- Results Panel -->
+            <section class="results-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-chart-bar"></i> Forecast Results</h2>
+                    <div class="controls">
+                        <button id="exportCsv" class="btn export-btn">
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="loadingIndicator" class="loading hidden">
+                    <div class="spinner"></div>
+                    <p>Generating forecast...</p>
+                </div>
+                
+                <div id="resultsContainer" class="hidden">
+                    <div class="chart-container">
+                        <canvas id="forecastChart"></canvas>
+                    </div>
+                    
+                    <div class="summary-cards">
+                        <div class="card">
+                            <div class="card-icon">
+                                <i class="fas fa-arrow-up"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3>Max Value</h3>
+                                <p id="maxValue">-</p>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-icon">
+                                <i class="fas fa-arrow-down"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3>Min Value</h3>
+                                <p id="minValue">-</p>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-icon">
+                                <i class="fas fa-percentage"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3>Avg Change</h3>
+                                <p id="avgChange">-</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="resultsTable">
+                            <thead>
+                                <tr>
+                                    <th>Date <i class="fas fa-sort"></i></th>
+                                    <th>Predicted Value <i class="fas fa-sort"></i></th>
+                                    <th>Change <i class="fas fa-sort"></i></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="errorContainer" class="error hidden"></div>
+            </section>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Time Series Forecasting Dashboard &copy; 2023 | Powered by Prophet</p>
+            <div class="system-status">
+                <span class="status-indicator active"></span>
+                <span>Backend Connected</span>
+            </div>
+        </footer>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

@@ -63,12 +63,9 @@ def predict_with_prophet(
         # Filter for the requested date range
         mask = (forecast['ds'] >= start_dt) & (forecast['ds'] <= end_dt)
         forecast = forecast.loc[mask]
-        forecast = forecast[['ds', 'yhat']].rename(columns={
-                                'ds': 'date',
-                                'yhat': 'predicted_value'
-                            })
-        forecast['date'] = forecast['date'].dt.strftime('%Y-%m-%d')
-        forecast['predicted_value'] = forecast['predicted_value'].round(2)
+       
+        forecast['ds'] = forecast['ds'].dt.strftime('%Y-%m-%d')
+        forecast['yhat'] = forecast['yhat'].round(2)
         return forecast.reset_index(drop=True)
 
         
@@ -87,6 +84,7 @@ def predict_with_prophet(
 
 
 def get_feature_name():
+    
     global __data_columns
     global __model
     
@@ -95,8 +93,8 @@ def get_feature_name():
     return __data_columns     
 
 
-if __name__ =="__main__":
-   
+
+
 
     
              
