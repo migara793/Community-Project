@@ -1,40 +1,28 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 import os
 import sys
 import util
-import pandas as pd  # Import pandas if not already imported
+import pandas as pd
 
-# Get the path to the client directory
+# Get the path to the client build directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CLIENT_DIR = os.path.join(BASE_DIR, '..', 'client')
+CLIENT_BUILD_DIR = os.path.join(BASE_DIR, '..', 'client', 'build')
 
-app = Flask(
-    __name__, 
-    template_folder=CLIENT_DIR,
-    static_folder=CLIENT_DIR
-)
+app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return render_template('app.html')
-
-@app.route('/<path:filename>')
-def serve_static(filename):
-    return send_from_directory(CLIENT_DIR, filename)
-
+# API Endpoints (unchanged)
 @app.route('/get_feature_names', methods=['GET'])
 def get_feature_names():
     response = jsonify({'data_columns': util.get_feature_name()})
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
-# FIXED PREDICTION ENDPOINT
 @app.route('/predict_price', methods=['POST'])
 def predict_price():
     try:
         feature = request.form['feature']
-        start_date = request.form['start_day']
-        end_date = request.form['end_day']
+        start_date = request.form['start_date']
+        end_date = request.form['end_date']
         
         forecast_df = util.predict_with_prophet(feature, start_date, end_date)
         
@@ -46,7 +34,7 @@ def predict_price():
                 'predicted_value': row['yhat']
             })
         
-        response = jsonify(forecast_list)  # Return array directly
+        response = jsonify(forecast_list)
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response
         
@@ -55,6 +43,14 @@ def predict_price():
     except Exception as e:
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
+# Serve React App
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(os.path.join(CLIENT_BUILD_DIR, path)):
+        return send_from_directory(CLIENT_BUILD_DIR, path)
+    else:
+        return send_from_directory(CLIENT_BUILD_DIR, 'index.html')
 
 if __name__ == '__main__':
     print("Starting Python Flask server...")
