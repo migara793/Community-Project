@@ -1,8 +1,10 @@
-// src/App.js
+
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Chart } from 'chart.js';
 import './App.css';
+
+
 
 function App() {
   // State management
@@ -245,6 +247,8 @@ function App() {
     
     setForecastData(sortedData);
   };
+
+  
 
   return (
     <div className="dashboard">
