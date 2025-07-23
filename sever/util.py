@@ -1,11 +1,9 @@
 import json
 import pickle
-import numpy as np
+
 __data_columns=None
 __model=None
-from datetime import date
-import holidays
-from prophet import Prophet
+
 import pandas as pd
 import re
 def predict_with_prophet(
