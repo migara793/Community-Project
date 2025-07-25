@@ -1,72 +1,21 @@
 name: Build Docker Images
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'client/**'
-      - 'server/**'
-  workflow_dispatch:
+  [workflow_dispatch]
 
 jobs:
-  build-client:
+  publish_images:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          driver-opts: image=moby/buildkit:v0.11.0
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
-      - name: Build and Push Client Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./client
-          file: ./client/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/community-client:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/community-client:${{ github.sha }}
-          builder: ${{ steps.buildx.outputs.name }}
-          cache: false  # Explicitly disable cache
-
-  build-server:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker-container
-          driver-opts: image=moby/buildkit:v0.11.0
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
-      - name: Build and Push Server Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./server
-          file: ./server/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/community-server:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/community-server:${{ github.sha }}
-          builder: ${{ steps.buildx.outputs.name }}
-          cache: false  # Explicitly disable cache
+      - name: build images
+        run: 
+          docker build -f ./client/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/community-client:latest 
+          docker build -f ./server/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME}}/community-server:latest
+      - name: publish images    
+        run: |
+          docker login -u ${{ secrets.DOCKERHUB_USERNAME}} -p ${{ secrets.DOCKERHUB_TOKEN}}
+          docker push ${{ secrets.DOCKERHUB_USERNAME}}/community-client:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME}}/community-server:latest
+  
