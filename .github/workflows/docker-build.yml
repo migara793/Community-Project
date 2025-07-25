@@ -15,12 +15,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      # Fixed Buildx setup with container driver
       - name: Set up Docker Buildx
-        id: buildx  # Added ID to reference builder
+        id: buildx
         uses: docker/setup-buildx-action@v3
         with:
-          driver: docker-container  # Force container driver
+          driver: docker-container
           driver-opts: image=moby/buildkit:v0.11.0
       
       - name: Login to Docker Hub
@@ -38,8 +37,8 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/community-client:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/community-client:${{ github.sha }}
-          # Critical fix: Reference the builder by name
           builder: ${{ steps.buildx.outputs.name }}
+          cache: false  # Explicitly disable cache
 
   build-server:
     runs-on: ubuntu-latest
@@ -47,12 +46,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      # Fixed Buildx setup with container driver
       - name: Set up Docker Buildx
-        id: buildx  # Added ID to reference builder
+        id: buildx
         uses: docker/setup-buildx-action@v3
         with:
-          driver: docker-container  # Force container driver
+          driver: docker-container
           driver-opts: image=moby/buildkit:v0.11.0
       
       - name: Login to Docker Hub
@@ -70,5 +68,5 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/community-server:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/community-server:${{ github.sha }}
-          # Critical fix: Reference the builder by name
           builder: ${{ steps.buildx.outputs.name }}
+          cache: false  # Explicitly disable cache
