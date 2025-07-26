@@ -27,16 +27,16 @@ jobs:
       - name: Build and push client image
         run: |
           docker buildx build \
-            -f ./client/Dockerfile \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/community-client:latest \
-            --push \
-            ./client
-      
-      - name: Build and push server image
-        run: |
-          docker buildx build \
             -f ./server/Dockerfile \
             -t ${{ secrets.DOCKERHUB_USERNAME }}/community-server:latest \
             --push \
             ./server
+      
+      - name: Build and push server image
+        run: |
+          docker buildx build \
+            -f ./client/Dockerfile \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/community-client:latest \
+            --push \
+            ./client
   
