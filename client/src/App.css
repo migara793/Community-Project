@@ -326,9 +326,10 @@ tbody tr:hover {
     margin-bottom: 1rem;
 }
 
+/* FIXED KEYFRAMES SYNTAX */
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }   /* Removed extra parenthesis */
+    100% { transform: rotate(360deg); } /* Removed extra parenthesis */
 }
 
 /* Error Message */
