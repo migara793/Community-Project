@@ -24,7 +24,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       
-      - name: Build and push client image
+      - name: Build and push server image
         run: |
           docker buildx build \
             -f ./server/Dockerfile \
@@ -32,7 +32,7 @@ jobs:
             --push \
             ./server
       
-      - name: Build and push server image
+      - name: Build and push client image
         run: |
           docker buildx build \
             -f ./client/Dockerfile \
