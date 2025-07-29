@@ -12,6 +12,7 @@ env:
   PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
   PUBLIC_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PUBLIC }}
   AWS_REGION: us-east-1
+  TF_STATE_BUCKET_REGION: eu-north-1
 
 jobs:
   deploy-infra:
@@ -27,7 +28,7 @@ jobs:
 
       - name: Terraform Init
         id: init
-        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=$AWS_REGION"
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=$TF_STATE_BUCKET_REGION"
         working-directory: ./terraform
 
       - name: Terraform Plan
