@@ -64,7 +64,7 @@ resource "aws_iam_instance_profile" "ec2-profile" {
 }
 
 resource "aws_instance" "app_server" {
-  ami                    = "ami-0fa03d205540dd4a6 "  # Ubuntu 22.04
+  ami                    = "ami-0969826571f0530f7 "  # Ubuntu 22.04
   instance_type          = "t2.micro"
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.maingroup.id]
