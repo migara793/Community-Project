@@ -10,8 +10,9 @@ terraform {
     bucket         = "my-tf-state-bucket-migara123 "   # Update with your bucket name
     key            = "aws/ec2-deploy/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-lock"
+
     encrypt        = true
+    use_lockfile   = true  
   }
 }
 
@@ -63,7 +64,7 @@ resource "aws_iam_instance_profile" "ec2-profile" {
 }
 
 resource "aws_instance" "app_server" {
-  ami                    = "ami-042b4708b1d05f512"  # Ubuntu 22.04
+  ami                    = "ami-0becc523130ac9d5d"  # Ubuntu 22.04
   instance_type          = "t2.micro"
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.maingroup.id]
