@@ -1,21 +1,21 @@
-name: CI/CD with Terraform
+name: Deploy Application
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  TF_STATE_BUCKET_NAME: ${{ secrets.AWS_TF_STATE_BUCKET_NAME }}
-  PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
-  PUBLIC_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PUBLIC }}
   AWS_REGION: us-east-1
-  TF_STATE_BUCKET_REGION: eu-north-1
+  TF_STATE_BUCKET_NAME: ${{ secrets.AWS_TF_STATE_BUCKET_NAME }}
+  TF_STATE_BUCKET_REGION: us-east-1
+  TF_LOCK_TABLE: terraform-lock
+  PUBLIC_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PUBLIC }}
+  PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
 
 jobs:
-  deploy-infra:
+  deploy-infrastructure:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -27,12 +27,15 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform Init
-        id: init
-        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=$TF_STATE_BUCKET_REGION"
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET_NAME" \
+            -backend-config="region=$TF_STATE_BUCKET_REGION" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE" \
+            -backend-config="encrypt=true"
         working-directory: ./terraform
 
       - name: Terraform Plan
-        id: plan
         run: |
           terraform plan \
             -var="region=$AWS_REGION" \
@@ -43,6 +46,52 @@ jobs:
         working-directory: ./terraform
 
       - name: Terraform Apply
-        id: apply
         run: terraform apply -auto-approve PLAN
         working-directory: ./terraform
+
+  deploy-app:
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get Public IP
+        id: ip
+        run: |
+          cd terraform
+          IP=$(terraform output -raw instance_public_ip)
+          echo "PUBLIC_IP=$IP" >> $GITHUB_ENV
+
+      - name: Deploy Applications
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ env.PUBLIC_IP }}
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
+          script: |
+            # Create app directory
+            mkdir -p /home/ubuntu/app
+            cd /home/ubuntu/app
+            
+            # Create Docker Compose file
+            cat <<EOT > docker-compose.yml
+            version: '3.8'
+            services:
+              react-app:
+                image: your-dockerhub/react-app:latest
+                ports:
+                  - "80:3000"
+                restart: always
+                
+              flask-app:
+                image: your-dockerhub/flask-app:latest
+                ports:
+                  - "5000:5000"
+                restart: always
+            EOT
+            
+            # Pull and run containers
+            docker-compose down
+            docker-compose pull
+            docker-compose up -d
