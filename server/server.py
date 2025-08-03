@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify, send_from_directory
 import os
 
+
 import util
+from datetime import datetime
 
 
  #Get the path to the client build directory
@@ -9,6 +11,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENT_BUILD_DIR = os.path.join(BASE_DIR, '..', 'client', 'build')
 
 app = Flask(__name__)
+
+
+@app.route('/health')
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat(),
+        'version': '1.0.0'
+    })
 
 # API Endpoints (unchanged)
 @app.route('/get_feature_names', methods=['GET'])

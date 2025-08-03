@@ -41,7 +41,7 @@ jobs:
             -var="region=$AWS_REGION" \
             -var="public_key=$PUBLIC_SSH_KEY" \
             -var="private_key=$PRIVATE_SSH_KEY" \
-            -var="key_name=deployer-key" \
+            -var="key_name=github-actions-key" \
             -out=PLAN
         working-directory: ./terraform
 
@@ -49,157 +49,66 @@ jobs:
         run: terraform apply -auto-approve PLAN
         working-directory: ./terraform
 
-  deploy-app:
-    needs: deploy-infrastructure
-    runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: us-east-1
-      TF_STATE_BUCKET_NAME: ${{ secrets.AWS_TF_STATE_BUCKET_NAME }}
-      TF_STATE_BUCKET_REGION: us-east-1
-      TF_LOCK_TABLE: terraform-lock
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_wrapper: false
-
-      - name: Terraform Init and Get Public IP
+      - name: Get Public IP
         id: ip
         run: |
           cd terraform
-          terraform init \
-            -backend-config="bucket=$TF_STATE_BUCKET_NAME" \
-            -backend-config="region=$TF_STATE_BUCKET_REGION" \
-            -backend-config="dynamodb_table=$TF_LOCK_TABLE" \
-            -backend-config="encrypt=true"
           IP=$(terraform output -raw instance_public_ip)
           echo "PUBLIC_IP=$IP" >> $GITHUB_ENV
           echo "Instance IP: $IP"
 
-      - name: Wait for Instance to be Ready
+  deploy-with-ansible:
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Ansible
+        run: sudo apt-get update && sudo apt-get install -y ansible
+
+      - name: Set up SSH
         run: |
-          echo "Waiting for instance to be ready..."
-          sleep 60
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AWS_SSH_KEY_PRIVATE }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
 
-      - name: Deploy Applications
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.PUBLIC_IP }}
-          username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
-          timeout: 300s
-          command_timeout: 300s
-          script: |
-            set -e
-            
-            echo "Starting deployment process..."
-            
-            # Update system packages
-            sudo apt-get update
-            
-            # Install Docker if not present
-            if ! command -v docker &> /dev/null; then
-              echo "Installing Docker..."
-              sudo apt-get install -y docker.io
-              sudo systemctl start docker
-              sudo systemctl enable docker
-              sudo usermod -aG docker ubuntu
-            fi
-            
-            # Install Docker Compose if not present
-            if ! command -v docker-compose &> /dev/null; then
-              echo "Installing Docker Compose..."
-              sudo apt-get install -y docker-compose
-            fi
-            
-            # Create app directory
-            mkdir -p /home/ubuntu/app
-            cd /home/ubuntu/app
-            
-            # Create Docker Compose file
-            cat <<EOT > docker-compose.yml
-            version: '3.8'
-            services:
-              react-app:
-                image: migara37/community-client:latest
-                ports:
-                  - "80:3000"
-                restart: always
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:3000"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-                
-              flask-app:
-                image: migara37/community-server:latest
-                ports:
-                  - "5000:5000"
-                restart: always
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:5000"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-            EOT
-            
-            # Stop existing containers
-            echo "Stopping existing containers..."
-            docker-compose down || true
-            
-            # Pull latest images
-            echo "Pulling latest Docker images..."
-            docker-compose pull
-            
-            # Start containers
-            echo "Starting containers..."
-            docker-compose up -d
-            
-            # Wait for containers to be healthy
-            echo "Waiting for containers to be ready..."
-            sleep 30
-            
-            # Check container status
-            echo "Container status:"
-            docker-compose ps
-            
-            echo "Deployment completed successfully!"
+      - name: Run Ansible Playbook
+        run: |
+          ansible-playbook -i "${{ env.PUBLIC_IP }}," ansible/deploy.yml \
+            --user ubuntu \
+            --private-key ~/.ssh/deploy_key
 
-      - name: Verify Deployment
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ env.PUBLIC_IP }}
-          username: ubuntu
-          key: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
-          script: |
-            cd /home/ubuntu/app
-            echo "=== Container Status ==="
-            docker-compose ps
-            echo "=== Container Logs (React App) ==="
-            docker-compose logs --tail=10 react-app
-            echo "=== Container Logs (Flask App) ==="
-            docker-compose logs --tail=10 flask-app
-            echo "=== Testing Endpoints ==="
-            curl -f http://localhost:80 || echo "React app not responding"
-            curl -f http://localhost:5000 || echo "Flask app not responding"
+  verify-deployment:
+    needs: [deploy-infrastructure, deploy-with-ansible]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify React App
+        run: |
+          curl -sSf "http://${{ env.PUBLIC_IP }}:3000" || exit 1
+
+      - name: Verify Flask App
+        run: |
+          curl -sSf "http://${{ env.PUBLIC_IP }}:5000/health" || exit 1
 
   notify-completion:
-    needs: [deploy-infrastructure, deploy-app]
+    needs: [deploy-infrastructure, deploy-with-ansible, verify-deployment]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Notify Deployment Status
         run: |
-          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ] && [ "${{ needs.deploy-app.result }}" == "success" ]; then
+          if [ "${{ needs.deploy-infrastructure.result }}" == "success" ] && \
+             [ "${{ needs.deploy-with-ansible.result }}" == "success" ] && \
+             [ "${{ needs.verify-deployment.result }}" == "success" ]; then
             echo "✅ Deployment completed successfully!"
+            echo "React App: http://${{ env.PUBLIC_IP }}:3000"
+            echo "Flask App: http://${{ env.PUBLIC_IP }}:5000"
           else
             echo "❌ Deployment failed!"
             echo "Infrastructure: ${{ needs.deploy-infrastructure.result }}"
-            echo "Application: ${{ needs.deploy-app.result }}"
+            echo "Ansible: ${{ needs.deploy-with-ansible.result }}"
+            echo "Verification: ${{ needs.verify-deployment.result }}"
             exit 1
           fi

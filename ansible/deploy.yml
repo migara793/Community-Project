@@ -1,0 +1,235 @@
+---
+- name: Deploy React Flask Application
+  hosts: web_server
+  become: yes
+  vars:
+    react_port: 3000
+    flask_port: 5000
+    nginx_port: 80
+    app_user: ubuntu
+    react_image: "migara37/community-client:latest"
+    flask_image: "migara37/community-server:latest"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+          - nginx
+          - curl
+          - unzip
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: "{{ app_user }}"
+        groups: docker
+        append: yes
+
+    - name: Create application directory
+      file:
+        path: /opt/app
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Stop existing containers
+      shell: |
+        docker stop $(docker ps -aq) || true
+        docker rm $(docker ps -aq) || true
+      ignore_errors: yes
+
+    - name: Pull latest images
+      docker_image:
+        name: "{{ item }}"
+        source: pull
+        force_source: yes
+      loop:
+        - "{{ react_image }}"
+        - "{{ flask_image }}"
+      become_user: "{{ app_user }}"
+
+    - name: Create Docker Compose file
+      copy:
+        content: |
+          version: '3.8'
+          services:
+            flask-backend:
+              image: {{ flask_image }}
+              container_name: flask-backend
+              ports:
+                - "{{ flask_port }}:5000"
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 40s
+
+            react-frontend:
+              image: {{ react_image }}
+              container_name: react-frontend
+              ports:
+                - "{{ react_port }}:3000"
+              environment:
+                - NODE_ENV=production
+                - REACT_APP_API_URL=http://localhost:5000
+              depends_on:
+                flask-backend:
+                  condition: service_healthy
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:3000"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 40s
+        dest: /opt/app/docker-compose.yml
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+
+    - name: Start applications with Docker Compose
+      shell: |
+        cd /opt/app
+        docker-compose up -d
+      become_user: "{{ app_user }}"
+
+    - name: Wait for Flask backend to be healthy
+      uri:
+        url: "http://localhost:{{ flask_port }}/health"
+        method: GET
+        status_code: 200
+      register: flask_health
+      until: flask_health.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Wait for React frontend to be ready
+      uri:
+        url: "http://localhost:{{ react_port }}"
+        method: GET
+        status_code: 200
+      register: react_health
+      until: react_health.status == 200
+      retries: 30
+      delay: 10
+
+    - name: Configure Nginx as reverse proxy
+      copy:
+        content: |
+          upstream flask_backend {
+              server localhost:{{ flask_port }};
+          }
+
+          upstream react_frontend {
+              server localhost:{{ react_port }};
+          }
+
+          server {
+              listen {{ nginx_port }};
+              server_name {{ ansible_host }};
+
+              location / {
+                  proxy_pass http://react_frontend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              location /api/ {
+                  proxy_pass http://flask_backend/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+
+              location /health {
+                  proxy_pass http://flask_backend/health;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+              }
+          }
+        dest: /etc/nginx/sites-available/app
+        backup: yes
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/app
+        dest: /etc/nginx/sites-enabled/app
+        state: link
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Test Nginx configuration
+      command: nginx -t
+      register: nginx_test
+      changed_when: false
+      failed_when: nginx_test.rc != 0
+
+    - name: Restart and enable Nginx
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: yes
+
+    - name: Setup log rotation for Docker containers
+      copy:
+        content: |
+          /var/lib/docker/containers/*/*.log {
+              rotate 7
+              daily
+              compress
+              size 100M
+              missingok
+              delaycompress
+              copytruncate
+          }
+        dest: /etc/logrotate.d/docker-containers
+
+    - name: Create monitoring script
+      copy:
+        content: |
+          #!/bin/bash
+          echo "=== Application Health Check ===" >> /var/log/app-monitor.log
+          echo "Date: $(date)" >> /var/log/app-monitor.log
+          docker ps --format "table {{.Names}}\t{{.Status}}" >> /var/log/app-monitor.log
+          curl -s -o /dev/null -w "Flask API: %{http_code}\n" http://localhost:{{ flask_port }}/health >> /var/log/app-monitor.log
+          curl -s -o /dev/null -w "React App: %{http_code}\n" http://localhost:{{ react_port }} >> /var/log/app-monitor.log
+          echo "=========================" >> /var/log/app-monitor.log
+        dest: /usr/local/bin/app-monitor.sh
+        mode: '0755'
+
+    - name: Setup monitoring cron job
+      cron:
+        name: "Application health monitoring"
+        minute: "*/5"
+        job: "/usr/local/bin/app-monitor.sh"
+
+    - name: Display deployment status
+      debug:
+        msg: |
+          ✅ Deployment completed successfully!
+          Application URL: http://{{ ansible_host }}
+          React Frontend: http://{{ ansible_host }}:{{ react_port }}
+          Flask API: http://{{ ansible_host }}:{{ flask_port }}
+          Logs: /var/log/app-monitor.log
