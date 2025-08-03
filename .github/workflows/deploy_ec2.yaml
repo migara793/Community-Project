@@ -72,25 +72,26 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.AWS_SSH_KEY_PRIVATE }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan ${{ env.PUBLIC_IP }} >> ~/.ssh/known_hosts
+          ssh-keyscan ${{ needs.deploy-infrastructure.outputs.public_ip }} >> ~/.ssh/known_hosts
+          echo "Added host to known_hosts"
 
       - name: Run Ansible Playbook
         run: |
-          ansible-playbook -i "${{ env.PUBLIC_IP }}," ansible/deploy.yml \
+         ansible-playbook -i "${{ needs.deploy-infrastructure.outputs.public_ip }}," ansible/deploy.yml \
             --user ubuntu \
             --private-key ~/.ssh/deploy_key
-
+       
   verify-deployment:
     needs: [deploy-infrastructure, deploy-with-ansible]
     runs-on: ubuntu-latest
     steps:
       - name: Verify React App
         run: |
-          curl -sSf "http://${{ env.PUBLIC_IP }}:3000" || exit 1
+          curl -sSf "http://${{ needs.deploy-infrastructure.outputs.public_ip}}:3000" || exit 1
 
       - name: Verify Flask App
         run: |
-          curl -sSf "http://${{ env.PUBLIC_IP }}:5000/health" || exit 1
+          curl -sSf "http://${{ needs.deploy-infrastructure.outputs.public_ip }}}:5000/health" || exit 1
 
   notify-completion:
     needs: [deploy-infrastructure, deploy-with-ansible, verify-deployment]
@@ -103,8 +104,8 @@ jobs:
              [ "${{ needs.deploy-with-ansible.result }}" == "success" ] && \
              [ "${{ needs.verify-deployment.result }}" == "success" ]; then
             echo "✅ Deployment completed successfully!"
-            echo "React App: http://${{ env.PUBLIC_IP }}:3000"
-            echo "Flask App: http://${{ env.PUBLIC_IP }}:5000"
+            echo "React App: http://${{  needs.deploy-infrastructure.outputs.public_ip  }}:3000"
+            echo "Flask App: http://${{  needs.deploy-infrastructure.outputs.public_ip  }}:5000"
           else
             echo "❌ Deployment failed!"
             echo "Infrastructure: ${{ needs.deploy-infrastructure.result }}"
