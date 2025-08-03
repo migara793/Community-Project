@@ -4,4 +4,3 @@ public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDCZbOAYbXYzSR2O9fDOCDG1SBARo
 
 react_port = 3000
 flask_port = 5000
-instance_type = "t2.micro"
