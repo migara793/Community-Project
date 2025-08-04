@@ -18,32 +18,43 @@
         update_cache: yes
         cache_valid_time: 3600
 
-    - name: Install required packages
+ 
+
+    
+    # NEW: Docker repository setup
+    - name: Install prerequisites
       apt:
         name:
-          - docker.io
-          - docker-compose-plugin  # Required for v2 compatibility
-          - nginx
+          - apt-transport-https
+          - ca-certificates
           - curl
-          - unzip
-          - python3-pip
+          - software-properties-common
+          - gnupg-agent
         state: present
 
-    - name: Install Docker Compose v2
-      get_url:
-        url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-linux-x86_64"
-        dest: /usr/local/bin/docker-compose
-        mode: '0755'
-        owner: root
-        group: root
-      register: docker_compose_install
-      when: ansible_os_family == 'Debian'
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
 
-    - name: Verify Docker Compose version
-      command: docker compose version
-      register: compose_version
-      changed_when: false
-      failed_when: "'Docker Compose version' not in compose_version.stdout"
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker-ce
+        update_cache: yes
+
+    - name: Install Docker packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
 
     - name: Start and enable Docker
       systemd:
