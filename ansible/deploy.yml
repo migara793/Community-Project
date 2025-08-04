@@ -1,6 +1,6 @@
 ---
 - name: Deploy React Flask Application
-  hosts: web_server  # Will be defined in inventory
+  hosts: web_server
   become: yes
   vars:
     react_port: 3000
@@ -9,7 +9,8 @@
     app_user: ubuntu
     react_image: "migara37/community-client:latest"
     flask_image: "migara37/community-server:latest"
-    domain_name: "supwebforcasting.com"  # Set your domain here
+    domain_name: "your-domain.com"  # Set your domain here
+    docker_compose_version: "v2.23.0"  # Define version for easy updates
 
   tasks:
     - name: Update apt cache
@@ -21,11 +22,28 @@
       apt:
         name:
           - docker.io
-          - docker-compose
+          - docker-compose-plugin  # Required for v2 compatibility
           - nginx
           - curl
           - unzip
+          - python3-pip
         state: present
+
+    - name: Install Docker Compose v2
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-linux-x86_64"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+        owner: root
+        group: root
+      register: docker_compose_install
+      when: ansible_os_family == 'Debian'
+
+    - name: Verify Docker Compose version
+      command: docker compose version
+      register: compose_version
+      changed_when: false
+      failed_when: "'Docker Compose version' not in compose_version.stdout"
 
     - name: Start and enable Docker
       systemd:
@@ -48,7 +66,7 @@
         mode: '0755'
 
     - name: Stop and remove existing app containers
-      docker_compose:
+      community.docker.docker_compose_v2:
         project_src: /opt/app
         state: absent
       ignore_errors: yes
@@ -72,7 +90,7 @@
               image: {{ flask_image }}
               container_name: flask-backend
               ports:
-                - "0.0.0.0:{{ flask_port }}:5000"  # Explicit external binding
+                - "0.0.0.0:{{ flask_port }}:5000"
               restart: unless-stopped
               healthcheck:
                 test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -88,7 +106,7 @@
                 - "0.0.0.0:{{ react_port }}:3000"
               environment:
                 - NODE_ENV=production
-                - REACT_APP_API_URL=http://flask-backend:5000  # Use internal DNS
+                - REACT_APP_API_URL=http://flask-backend:5000
               depends_on:
                 flask-backend:
                   condition: service_healthy
@@ -104,8 +122,8 @@
         group: "{{ app_user }}"
         mode: '0644'
 
-    - name: Start applications
-      docker_compose:
+    - name: Start applications with Docker Compose v2
+      community.docker.docker_compose_v2:
         project_src: /opt/app
         state: present
         pull: yes
