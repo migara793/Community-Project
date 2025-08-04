@@ -102,7 +102,7 @@ jobs:
           ${{ env.PUBLIC_IP }} ansible_user=ubuntu
     
           [web_server:vars]
-          ansible_ssh_private_key_file=~/.ssh/deploy-key.pem
+          ansible_ssh_private_key_file=~/.ssh/deploy_key.pem
           EOF
     
       - name: Run Ansible playbook
