@@ -16,4 +16,5 @@ COPY . .
 
 # Expose port (default Flask port)
 EXPOSE 5000
-CMD [ "python","server.py" ]# Replace with your entrypoint
+CMD [ "python","server.py" ]
+# Replace with your entrypoint
