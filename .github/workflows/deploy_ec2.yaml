@@ -90,17 +90,26 @@ jobs:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.AWS_SSH_KEY_PRIVATE }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.AWS_SSH_KEY_PRIVATE }}" > ~/.ssh/deploy_key.pem
+          chmod 600 ~/.ssh/deploy_key.pem
           ssh-keyscan -H "$PUBLIC_IP" >> ~/.ssh/known_hosts
           echo "Added host to known_hosts"
 
-      - name: Run Ansible Playbook
+      - name: Create Ansible inventory
         run: |
-          ansible-playbook -i "$PUBLIC_IP," ansible/deploy.yml \
-            --user ubuntu \
-            --private-key ~/.ssh/deploy_key
+          cat > ansible/inventory.ini <<EOF
+          [web_server]
+          ${{ env.PUBLIC_IP }} ansible_user=ubuntu
+    
+          [web_server:vars]
+          ansible_ssh_private_key_file=~/.ssh/deploy-key.pem
+          EOF
+    
+      - name: Run Ansible playbook
+        run: ansible-playbook -i ansible/inventory.ini ansible/deploy.yml    
 
+      
+    
   verify-deployment:
     needs: [deploy-infrastructure, deploy-with-ansible]
     runs-on: ubuntu-latest

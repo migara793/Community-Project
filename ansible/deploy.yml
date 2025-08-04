@@ -1,6 +1,6 @@
 ---
 - name: Deploy React Flask Application
-  hosts: web_server
+  hosts: web_server  # Will be defined in inventory
   become: yes
   vars:
     react_port: 3000
@@ -9,6 +9,7 @@
     app_user: ubuntu
     react_image: "migara37/community-client:latest"
     flask_image: "migara37/community-server:latest"
+    domain_name: "supwebforcasting.com"  # Set your domain here
 
   tasks:
     - name: Update apt cache
@@ -46,10 +47,10 @@
         group: "{{ app_user }}"
         mode: '0755'
 
-    - name: Stop existing containers
-      shell: |
-        docker stop $(docker ps -aq) || true
-        docker rm $(docker ps -aq) || true
+    - name: Stop and remove existing app containers
+      docker_compose:
+        project_src: /opt/app
+        state: absent
       ignore_errors: yes
 
     - name: Pull latest images
@@ -71,7 +72,7 @@
               image: {{ flask_image }}
               container_name: flask-backend
               ports:
-                - "{{ flask_port }}:5000"
+                - "0.0.0.0:{{ flask_port }}:5000"  # Explicit external binding
               restart: unless-stopped
               healthcheck:
                 test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -84,10 +85,10 @@
               image: {{ react_image }}
               container_name: react-frontend
               ports:
-                - "{{ react_port }}:3000"
+                - "0.0.0.0:{{ react_port }}:3000"
               environment:
                 - NODE_ENV=production
-                - REACT_APP_API_URL=http://localhost:5000
+                - REACT_APP_API_URL=http://flask-backend:5000  # Use internal DNS
               depends_on:
                 flask-backend:
                   condition: service_healthy
@@ -103,10 +104,12 @@
         group: "{{ app_user }}"
         mode: '0644'
 
-    - name: Start applications with Docker Compose
-      shell: |
-        cd /opt/app
-        docker-compose up -d
+    - name: Start applications
+      docker_compose:
+        project_src: /opt/app
+        state: present
+        pull: yes
+        restarted: yes
       become_user: "{{ app_user }}"
 
     - name: Wait for Flask backend to be healthy
@@ -116,33 +119,23 @@
         status_code: 200
       register: flask_health
       until: flask_health.status == 200
-      retries: 30
-      delay: 10
-
-    - name: Wait for React frontend to be ready
-      uri:
-        url: "http://localhost:{{ react_port }}"
-        method: GET
-        status_code: 200
-      register: react_health
-      until: react_health.status == 200
-      retries: 30
-      delay: 10
+      retries: 10
+      delay: 5
 
     - name: Configure Nginx as reverse proxy
       copy:
         content: |
           upstream flask_backend {
-              server localhost:{{ flask_port }};
+              server 127.0.0.1:{{ flask_port }};
           }
 
           upstream react_frontend {
-              server localhost:{{ react_port }};
+              server 127.0.0.1:{{ react_port }};
           }
 
           server {
               listen {{ nginx_port }};
-              server_name {{ ansible_host }};
+              server_name {{ domain_name }} {{ ansible_host }};
 
               location / {
                   proxy_pass http://react_frontend;
@@ -192,44 +185,22 @@
         state: restarted
         enabled: yes
 
-    - name: Setup log rotation for Docker containers
-      copy:
-        content: |
-          /var/lib/docker/containers/*/*.log {
-              rotate 7
-              daily
-              compress
-              size 100M
-              missingok
-              delaycompress
-              copytruncate
-          }
-        dest: /etc/logrotate.d/docker-containers
-
-    - name: Create monitoring script
-      copy:
-        content: |
-          #!/bin/bash
-          echo "=== Application Health Check ===" >> /var/log/app-monitor.log
-          echo "Date: $(date)" >> /var/log/app-monitor.log
-          docker ps --format "table {{.Names}}\t{{.Status}}" >> /var/log/app-monitor.log
-          curl -s -o /dev/null -w "Flask API: %{http_code}\n" http://localhost:{{ flask_port }}/health >> /var/log/app-monitor.log
-          curl -s -o /dev/null -w "React App: %{http_code}\n" http://localhost:{{ react_port }} >> /var/log/app-monitor.log
-          echo "=========================" >> /var/log/app-monitor.log
-        dest: /usr/local/bin/app-monitor.sh
-        mode: '0755'
-
-    - name: Setup monitoring cron job
-      cron:
-        name: "Application health monitoring"
-        minute: "*/5"
-        job: "/usr/local/bin/app-monitor.sh"
+    - name: Open firewall ports
+      ufw:
+        port: "{{ item }}"
+        state: enabled
+        proto: tcp
+      loop:
+        - "{{ nginx_port }}"
+        - "{{ flask_port }}"
+        - "{{ react_port }}"
+      when: ansible_os_family == 'Debian'
 
     - name: Display deployment status
       debug:
         msg: |
-          ✅ Deployment completed successfully!
-          Application URL: http://{{ ansible_host }}
-          React Frontend: http://{{ ansible_host }}:{{ react_port }}
+          ✅ Deployment successful!
+          Public URL: http://{{ ansible_host }}
+          React: http://{{ ansible_host }}:{{ react_port }}
           Flask API: http://{{ ansible_host }}:{{ flask_port }}
-          Logs: /var/log/app-monitor.log
+          Health Check: http://{{ ansible_host }}/health
