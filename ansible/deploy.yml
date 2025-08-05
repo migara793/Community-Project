@@ -210,7 +210,7 @@
       community.docker.docker_compose_v2:
         project_src: /opt/app
         state: present
-        pull: yes
+        pull: always
         restarted: yes
       become_user: "{{ app_user }}"
 
