@@ -10,7 +10,15 @@
     react_image: "migara37/community-client:latest"
     flask_image: "migara37/community-server:latest"
     domain_name: "your-domain.com"  # Set your domain here
-    docker_compose_version: "v2.23.0"  # Define version for easy updates
+    docker_compose_version: "v2.23.0"
+
+  handlers:
+    - name: Restart Docker
+      systemd:
+        name: docker
+        state: restarted
+        enabled: yes
+      listen: "docker config changed"
 
   tasks:
     - name: Update apt cache
@@ -18,10 +26,6 @@
         update_cache: yes
         cache_valid_time: 3600
 
- 
-
-    
-    # NEW: Docker repository setup
     - name: Install prerequisites
       apt:
         name:
@@ -30,6 +34,7 @@
           - curl
           - software-properties-common
           - gnupg-agent
+          - linux-modules-extra-$(uname -r)  # Critical for overlayfs
         state: present
 
     - name: Add Docker GPG key
@@ -55,7 +60,60 @@
         state: present
         update_cache: yes
 
+    # === Docker Startup Fixes ===
+    - name: Load required kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
 
+    - name: Ensure kernel modules persist after reboot
+      lineinfile:
+        path: /etc/modules
+        line: "{{ item }}"
+        state: present
+        create: yes
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Configure kernel parameters
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_set: yes
+        reload: yes
+      loop:
+        - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { key: 'net.ipv4.ip_forward', value: '1' }
+
+    - name: Create Docker config directory
+      file:
+        path: /etc/docker
+        state: directory
+        mode: '0755'
+
+    - name: Configure Docker storage
+      copy:
+        content: |
+          {
+            "storage-driver": "overlay2",
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            }
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: "docker config changed"
+
+    # === End of Docker Fixes ===
+    
     - name: Start and enable Docker
       systemd:
         name: docker
@@ -104,11 +162,11 @@
                 - "0.0.0.0:{{ flask_port }}:5000"
               restart: unless-stopped
               healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+                test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
                 interval: 30s
                 timeout: 10s
-                retries: 3
-                start_period: 40s
+                retries: 5
+                start_period: 20s
 
             react-frontend:
               image: {{ react_image }}
@@ -123,10 +181,10 @@
                   condition: service_healthy
               restart: unless-stopped
               healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:3000"]
+                test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
                 interval: 30s
                 timeout: 10s
-                retries: 3
+                retries: 5
                 start_period: 40s
         dest: /opt/app/docker-compose.yml
         owner: "{{ app_user }}"
@@ -175,7 +233,8 @@
               }
 
               location /api/ {
-                  proxy_pass http://flask_backend/;
+                  rewrite ^/api/(.*)$ /$1 break;
+                  proxy_pass http://flask_backend;
                   proxy_set_header Host $host;
                   proxy_set_header X-Real-IP $remote_addr;
                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -214,16 +273,22 @@
         state: restarted
         enabled: yes
 
-    - name: Open firewall ports
+    - name: Configure firewall
       ufw:
+        rule: allow
         port: "{{ item }}"
-        state: enabled
         proto: tcp
       loop:
+        - "22"
         - "{{ nginx_port }}"
         - "{{ flask_port }}"
         - "{{ react_port }}"
       when: ansible_os_family == 'Debian'
+
+    - name: Enable firewall
+      ufw:
+        state: enabled
+        policy: deny
 
     - name: Display deployment status
       debug:
