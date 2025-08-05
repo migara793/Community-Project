@@ -211,7 +211,7 @@
         project_src: /opt/app
         state: present
         pull: always
-        build: false
+        build: never
         recreate: always
         remove_orphans: true
       become_user: "{{ app_user }}"
