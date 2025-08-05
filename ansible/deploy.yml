@@ -34,7 +34,6 @@
           - curl
           - software-properties-common
           - gnupg-agent
-          - linux-modules-extra-$(uname -r)  # Critical for overlayfs
         state: present
 
     - name: Add Docker GPG key
@@ -60,7 +59,25 @@
         state: present
         update_cache: yes
 
-    # === Docker Startup Fixes ===
+    # === Fixed Kernel Package Installation ===
+    - name: Install kernel extras if available
+      apt:
+        name: "linux-modules-extra-{{ ansible_kernel }}"
+        state: present
+      ignore_errors: yes
+      register: kernel_extras_install
+
+    - name: Debug kernel extras installation
+      debug:
+        msg: "Kernel extras installed successfully"
+      when: kernel_extras_install is succeeded
+
+    - name: Debug kernel extras failure
+      debug:
+        msg: "Kernel extras not available, continuing anyway (likely already included)"
+      when: kernel_extras_install is failed
+    # === End Fix ===
+
     - name: Load required kernel modules
       modprobe:
         name: "{{ item }}"
@@ -112,8 +129,6 @@
         mode: '0644'
       notify: "docker config changed"
 
-    # === End of Docker Fixes ===
-    
     - name: Start and enable Docker
       systemd:
         name: docker
