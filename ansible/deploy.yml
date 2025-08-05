@@ -149,10 +149,30 @@
         group: "{{ app_user }}"
         mode: '0755'
 
-    - name: Stop and remove existing app containers
-      community.docker.docker_compose_v2:
-        project_src: /opt/app
+     # Enhanced container cleanup
+    - name: Stop and remove any Docker containers
+      community.docker.docker_container:
+        name: "{{ item }}"
         state: absent
+        force_kill: yes
+        force_remove: yes
+      loop:
+        - flask-backend
+        - react-frontend
+      ignore_errors: yes
+
+    - name: Remove orphaned Docker containers
+      shell: |
+        docker ps -aq --filter "name=flask-backend" --filter "name=react-frontend" | xargs -r docker rm -f
+      args:
+        executable: /bin/bash
+      ignore_errors: yes
+
+    - name: Remove Docker networks
+      shell: |
+        docker network ls -q --filter "name=app_default" | xargs -r docker network rm
+      args:
+        executable: /bin/bash
       ignore_errors: yes
 
     - name: Pull latest images
