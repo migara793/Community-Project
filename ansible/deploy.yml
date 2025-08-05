@@ -211,7 +211,10 @@
         project_src: /opt/app
         state: present
         pull: always
-        restarted: yes
+        recreate: always
+        services:
+             - flask-backend
+             - react-frontend
       become_user: "{{ app_user }}"
 
     - name: Wait for Flask backend to be healthy
